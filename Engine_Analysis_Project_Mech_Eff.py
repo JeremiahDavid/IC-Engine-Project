@@ -25,6 +25,8 @@ data.columns = ['EngineName', 'Displacement_L', 'Cylinders', 'PeakPower_HP',
 data.sort_values(by='CompRatio',inplace=True)
 
 def cp_eq(T):
+    # equation to estimate the soecific heat (pressure) 
+        # equation obtained from ME4011 course work
     theta = T/100
     cp0_N2 = 39.060 - 512.79*(theta)**-1.5 + 1072.7*(theta)**-2 - 820.40*(theta)**-3
     cp0_O2 = 37.434 + 0.0201*(theta)**1.5 - 178.57*(theta)**-1.5 + 236.88*(theta)**-2.0
@@ -34,17 +36,20 @@ def cp_eq(T):
     return cpq
 
 def mech_eff(Up):
-    Up = np.array(Up).reshape(-1,1)
+    Up = np.array(Up).reshape(-1,1) # reshape the data
+    # the data taken from Pulkrabek
     piston_speed = np.array([2,4,6,8,10,12,14,16,18,20]).reshape(-1,1)
     mechanical_efficiency = np.array([92.1,88.6,85,81.25,77.5,72.9,68,62.7,57.2,50.2]).reshape(-1,1)
+    # smooth set of x values to plug into the model for the plot
     piston_speed_range = np.arange(2,23,18/1000).reshape(-1,1)
+    # create the regression model
     eta_m_model = LinearRegression()
     poly_reg = PolynomialFeatures(degree = 3)
     piston_speed_poly = poly_reg.fit_transform(piston_speed)
     eta_m_model.fit(piston_speed_poly,mechanical_efficiency)
     mechanical_efficiency_interpolation = eta_m_model.predict(poly_reg.fit_transform(piston_speed_range))
     mechanical_efficiency_predict = eta_m_model.predict(poly_reg.fit_transform(Up))
-    
+    # plot the data that trained the model, the regression line, and the data to be predicted
     plt.figure(1)
     plt.plot(piston_speed_range,mechanical_efficiency_interpolation,color='r',
              dashes=[2,1,2,1],linewidth=1,label='Interpolated Data')
@@ -59,13 +64,9 @@ def mech_eff(Up):
     return mechanical_efficiency_predict
     
 # =============================================================================
-# Main Program (values from example 1 in chapter 3)
+# Main Program
 # =============================================================================
-    
-# =============================================================================
-# Variables
-# =============================================================================
-def Engine_analysis(data,eta_c):
+def Engine_analysis(data,eta_c,pv_plots):
     Vd_total = data.Displacement_L # total displacement for the engine [L]
     nc = data.Cylinders # number of cylinders
     rc = data.CompRatio # compression ratio
@@ -159,16 +160,21 @@ def Engine_analysis(data,eta_c):
     # W_net2 = 2.04e3*(Vs-Vc)
     mech_eff_est = pd.Series(list(mech_eff(u_p)))
     mech_eff_calc = 100*Power_brake/Power_indicated
+    
+    # plot mech eff vs. average piston speed to check for relationship
     plt.figure(2)
     plt.scatter(u_p,mech_eff_calc,color='b',marker='*',
               label='Actual Mechanical Efficiency')
     plt.xlim((15,23))
+    plt.xlabel('Average Piston Speed')
+    plt.ylabel('Mechanical Efficiency %')
     
+    # plot mech eff vs. comp ratio 
     plt.figure(3)
     plt.scatter(rc,mech_eff_calc,color='b',marker='*',label='Raw Data')
     plt.xlabel('Compression Ratio')
     plt.ylabel('Mechanical Efficiency %')
-    
+    # since there is a decent relationship, develop model 
     rc_plot = np.arange(9.5,13.5,0.01).reshape(-1,1)
     rc_model = LinearRegression()
     poly_reg_rc = PolynomialFeatures(degree = 1)
@@ -176,6 +182,7 @@ def Engine_analysis(data,eta_c):
     rc_model.fit(rc_poly,mech_eff_calc)
     mech_eff_regression = rc_model.predict(poly_reg_rc.fit_transform(rc_plot))
     mech_eff_pred = rc_model.predict(rc_poly)
+    # plot the bounds with a 94.5% confidence interval
     K = 2 # coverage factor (2 for 95.4% CI)
     error = np.sqrt(mean_squared_error(mech_eff_calc,mech_eff_pred))
     lower_bound = rc_model.coef_[1]*rc_plot + rc_model.intercept_ - K*error
@@ -188,19 +195,8 @@ def Engine_analysis(data,eta_c):
               dashes=[1,1,1,1],linewidth=1)
     plt.legend()
     
-    # x = sm.add_constant(np.array(rc))
-    # model = sm.OLS(np.array(mech_eff_calc),x).fit()
-    # mech_eff_predicted = model.predict(x)
-    # prstd, iv_l, iv_u = wls_prediction_std(model,alpha=0.0455)
-    # print(model.summary())
-    
-    # plt.plot(rc,mech_eff_predicted,'r--',linewidth=1,label='Interpolated Data')
-    # plt.plot(rc,iv_l,'g--',label='95.45% Confidence Bound')
-    # plt.plot(rc,iv_u,'g--')
-    # plt.legend()
-    
-    
-    
+  
+    # plot the mech eff vs. various comp ratios to see if there are correlations
     mask8 = (rc >= 8) & (rc < 9)
     Power_brake8 = Power_brake[mask8]
     mech_eff8 = mech_eff_calc[mask8]
@@ -234,59 +230,53 @@ def Engine_analysis(data,eta_c):
     print('rmse: %s' %(error))
     print('gain: %s' %(rc_model.coef_[1]))
     print('intercept: %s' %(rc_model.intercept_))
+
+    if pv_plots:
+        # plots for pressure vs. volume for strokes 1-4 (all but intake and exhaust)
+        for i in np.arange(0,len(p2)):
+            
+            print("p1: %.2f [kpa]\t\tT1: %.2f [K]" %(p1,T1))
+            print("p2: %.2f [kpa]\t\tT2: %.2f [K]" %(p2[i],T2[i]))
+            print("p3: %.2f [kpa]\t\tT3: %.2f [K]" %(p3[i],T3[i]))
+            print("p4: %.2f [kpa]\t\tT4: %.2f [K]" %(p4[i],T4[i]))
+            
+            print("Net work output (indicated):\t %.2f [kJ per cycle]" %(W_net[i]))
+            # print("Net work output:\t %.2f [kJ per cycle]" %(W_net2[i]))
+            print("Total engine power output (indicated):\t%.2f [kW]" %(Power_indicated[i]))
+            print("Total engine power output (brake):\t%.2f [kW]" %(Power_brake[i]))
+            # print("Total engine power output (indicated):\t%.2f [kW]" %(Power2[i]))
+        
+            p = lambda v,T: m_m[i]*R*T/v # function to get pressure
+            V12 = np.linspace(V1[i],V2[i],101) # range: [1-rc]
+            T12 = np.linspace(T1,T2[i],101)
+            p12 = p(V12,T12)
+            # p12 = p1*np.divide(V12,V2)**k # a vector of (p2 = p1*rc^k) 
+            
+            V23 = [V2[i], V2[i]] # constant volume 
+            p23 = [p2[i], p3[i]] 
+            
+            # p34 = p3*np.divide(V12,V2)**-k # a vector of (p2 = p1*rc^-k) 
+            V34 = np.linspace(V3[i],V4[i],101) # range: [1-rc]
+            T34 = np.linspace(T3[i],T4[i],101)
+            p34 = p(V34,T34)
+            
+            V45 = [V1[i], V1[i]] # constant volume 
+            p45 = [p4[i], p5]
+            
+            plt.figure()
+            plt.plot(np.linspace(V1[i],V2[i],101),p12,'-b')
+            plt.plot(V23,p23,1000,'-b')
+            plt.plot(np.linspace(V2[i],V1[i],101),p34,'-b')
+            plt.plot(V45,p45,'-b')
+            plt.xlabel('Volume [m^3]')
+            plt.ylabel('Pressure [kPa]')
+        
     return mech_eff_calc
 
-mech_effs_90 = Engine_analysis(data,0.90)
-
-# mech_effs_95 = Engine_analysis(data,0.95)
-# mech_effs_98 = Engine_analysis(data,0.98)
-# lower_bound_error = 100*(np.abs(mech_effs_90-mech_effs_95))/mech_effs_90
-# upper_bound_error = 100*(mech_effs_90-mech_effs_98)/mech_effs_90
-# =============================================================================
-# Calculate mechanical efficiency
-# =============================================================================
-# mech_eff_real = 100*Power_brake/Power
-
-# for i in np.arange(0,len(p2)):
-    
-#     print("p1: %.2f [kpa]\t\tT1: %.2f [K]" %(p1,T1))
-#     print("p2: %.2f [kpa]\t\tT2: %.2f [K]" %(p2[i],T2[i]))
-#     print("p3: %.2f [kpa]\t\tT3: %.2f [K]" %(p3[i],T3[i]))
-#     print("p4: %.2f [kpa]\t\tT4: %.2f [K]" %(p4[i],T4[i]))
-    
-#     print("Net work output (indicated):\t %.2f [kJ per cycle]" %(W_net[i]))
-#     # print("Net work output:\t %.2f [kJ per cycle]" %(W_net2[i]))
-#     print("Total engine power output (indicated):\t%.2f [kW]" %(Power_indicated[i]))
-#     print("Total engine power output (brake):\t%.2f [kW]" %(Power_brake[i]))
-#     # print("Total engine power output (indicated):\t%.2f [kW]" %(Power2[i]))
-
-#     p = lambda v,T: m_m[i]*R*T/v # function to get pressure
-#     V12 = np.linspace(V1[i],V2[i],101) # range: [1-rc]
-#     T12 = np.linspace(T1,T2[i],101)
-#     p12 = p(V12,T12)
-#     # p12 = p1*np.divide(V12,V2)**k # a vector of (p2 = p1*rc^k) 
-    
-#     V23 = [V2[i], V2[i]] # constant volume 
-#     p23 = [p2[i], p3[i]] 
-    
-#     # p34 = p3*np.divide(V12,V2)**-k # a vector of (p2 = p1*rc^-k) 
-#     V34 = np.linspace(V3[i],V4[i],101) # range: [1-rc]
-#     T34 = np.linspace(T3[i],T4[i],101)
-#     p34 = p(V34,T34)
-    
-#     V45 = [V1[i], V1[i]] # constant volume 
-#     p45 = [p4[i], p5]
-    
-#     plt.figure()
-#     plt.plot(np.linspace(V1[i],V2[i],101),p12,'-b')
-#     plt.plot(V23,p23,1000,'-b')
-#     plt.plot(np.linspace(V2[i],V1[i],101),p34,'-b')
-#     plt.plot(V45,p45,'-b')
-#     plt.xlabel('Volume [m^3]')
-#     plt.ylabel('Pressure [kPa]')
-
-
-
+# run analysis with combustion effecieny of 90%
+eta_c = 0.9
+pv_plots = False
+mech_effs_90 = Engine_analysis(data,eta_c,pv_plots)
 
 
 
