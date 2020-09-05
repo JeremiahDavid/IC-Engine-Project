@@ -13,8 +13,6 @@ import pandas as pd
 from sklearn.linear_model import LinearRegression
 from sklearn.preprocessing import PolynomialFeatures
 from sklearn.metrics import mean_squared_error
-import statsmodels.api as sm
-from statsmodels.sandbox.regression.predstd import wls_prediction_std
 
 plt.close('all')
 
